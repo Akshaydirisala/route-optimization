@@ -1,0 +1,255 @@
+# route-optimization
+meta heuristic Genetic algorithm 
+rm(list=ls(all=T))
+setwd("E:/INSOFE/CSV")
+JobExecutionTime = read.csv(file = "JobExecutionTime.csv",header = T)
+str(JobExecutionTime)
+summary(JobExecutionTime)
+TravelTime = read.csv(file = "TravelTime.csv",header = T)
+str(TravelTime)
+summary(TravelTime)
+
+# Solution Space - All possible solutions to the problem via permutations 
+library(gtools)
+Permutations <- data.frame(
+  permutations(n = (length(JobExecutionTime$StopId)+1),
+               r = 2, v = c("Depot",
+                            as.character(JobExecutionTime$StopId)),
+               repeats.allowed = FALSE))
+colnames(Permutations)= c("stopId1","stopId2")
+summary(Permutations)
+maxTravelTime = max(TravelTime$time)
+TravelTime = merge(x = TravelTime,y = Permutations,
+                   by = c("stopId1","stopId2"),all = T)
+summary(TravelTime)
+TravelTime$time[is.na(x = TravelTime$time)] = maxTravelTime
+rm(maxTravelTime)
+allStops <- as.character(JobExecutionTime$StopId)
+class(allStops)
+RouteTimeLimit = 720
+StopIDUpperLimit = 9
+
+
+#Function for getting total time (Travel Time + Execution Time)
+getRouteTime <- function(Route){
+  # formatize data
+  Route <- as.character(Route)
+  stopID <- strsplit(x = as.character(Route), split = ":")[[1]]
+  SumTravelTime <- 0
+  for(k in 1:(length(stopID)-1)){
+    SumTravelTime <- SumTravelTime + TravelTime$time[
+      which((TravelTime$stopId1 == stopID[k]) & 
+              (TravelTime$stopId2 == stopID[k+1]))]
+  }
+  SumJobExecution <- 0
+  for(l in 1:length(stopID)){
+    if(stopID[l] == "Depot"){
+      SumJobExecution <- SumJobExecution
+    } else{
+      SumJobExecution <- SumJobExecution + JobExecutionTime$EstimatedDurationMinutes[
+        which(JobExecutionTime$StopId == stopID[l])]
+    }
+  }
+  TotalTime <- SumTravelTime + SumJobExecution
+  return(TotalTime)
+}
+
+############################# Function for concatenating the routes ##########################
+
+combine = function(stopId) {
+  for (i in 1:length(stopId)) {
+    if (i == 1) {
+      route = stopId[i]
+    } else {
+      route = paste(route, stopId[i], sep = ":")
+    }
+  }
+  return(route)
+}
+
+
+############################ Initial Population creation #####################################
+
+routeLength = 0
+InitialPopulation = NULL
+
+while(length(allStops) != 0) {
+  StopIdsList <- sample(x = allStops, size = 1, replace = FALSE)
+  if (routeLength == 0) {
+    route = paste("Depot", StopIdsList, "Depot", sep = ":")
+    routeLength = 1
+  } else {
+    route <- as.character(route)
+    stopID <- strsplit(x = as.character(route), split = ":")[[1]]
+    route = combine(stopID[1:(length(stopID)-1)]) #Calling combine function to concatenate
+    route = paste(route,StopIdsList,sep = ":")
+    route = paste(route,"Depot",sep = ":")
+    routeLength = routeLength + 1
+  }
+  
+  if (getRouteTime(Route = route) > RouteTimeLimit | 
+      length(strsplit(x = as.character(route), 
+                      split = ":")[[1]]) > StopIDUpperLimit) {
+    route <- as.character(route)
+    stopID <- strsplit(x = as.character(route), split = ":")[[1]]
+    route = combine(c(stopID[1:(length(stopID)-2)],"Depot"))
+    if (length(InitialPopulation) == 0) {
+      InitialPopulation = route
+    } else {
+      InitialPopulation = c(InitialPopulation,route)
+    }
+    routeLength = 0
+  } else {
+    allStops = allStops[-which (allStops %in% StopIdsList)]
+  }  
+}
+
+if(routeLength > 0) {
+  InitialPopulation = c(InitialPopulation,route)
+}
+
+InitialPopulation
+
+############################ Function for checking number of unique stop ids in a population########
+StopIdsUnique <- function(pop){
+  totalStopIds = NULL
+  for (i in (1:length(InitialPopulation))) {
+    stopID <- strsplit(x = as.character(InitialPopulation[i]), split = ":")[[1]]
+    #print(stopID)
+    totalStopIds = c(totalStopIds,stopID[2:length(stopID)])
+  }
+  totalUniqueStopIds = unique(totalStopIds)
+  #print(totalUniqueStopIds)
+  return(length(totalUniqueStopIds)-1) #Removing Depot
+}
+# print(totalStopIds)
+# if (totalStopIds == "68"){
+#   cat("There are exactly 68 unique stopIds in the initial population \n")
+# }else {
+#   cat("Please check the fitness Function")
+# }
+
+
+
+
+####################################Single point over Function ##############################
+
+crossover = function(route1, route2) {
+  route1 = as.character(route1)
+  route2 = as.character(route2)
+  stopID1 <- strsplit(x = route1, split = ":")[[1]]
+  stopID2 <- strsplit(x = route2, split = ":")[[1]]
+  
+  if ((length(stopID1) %% 2) == 0) {
+    firstHalfStopId1 = stopID1[seq(1,length(stopID1)/2,1)]
+    secondHalfStopId1 = stopID1[seq((length(stopID1)/2 + 1),
+                                    length(stopID1),1)]
+  } else {
+    
+    firstHalfStopId1 = stopID1[seq(1,floor(length(stopID1)/2),1)]
+    secondHalfStopId1 = stopID1[seq(ceiling(length(stopID1)/2),
+                                    length(stopID1),1)]
+  }
+  
+  if ((length(stopID2) %% 2) == 0) {
+    firstHalfStopId2 = stopID2[seq(1,length(stopID2)/2,1)]
+    secondHalfStopId2 = stopID2[seq((length(stopID2)/2 + 1),
+                                    length(stopID2),1)]
+  } else {
+    
+    firstHalfStopId2 = stopID2[seq(1,floor(length(stopID2)/2),1)]
+    secondHalfStopId2 = stopID2[seq(ceiling(length(stopID2)/2),
+                                    length(stopID2),1)]
+  }
+  
+  
+  newStopId1 = c(firstHalfStopId1, secondHalfStopId2)
+  newStopId2 = c(firstHalfStopId2, secondHalfStopId1)
+  
+  newroute1 = combine(newStopId1)
+  newroute2 = combine(newStopId2)
+  return(c(newroute1,newroute2))
+}
+
+#################################Function for calculating total time for whole population#######
+
+totaltime = function(Population) {
+  fitness = 0
+  for (i in 1:length(Population)) {
+    fitness = fitness + getRouteTime(Route = Population[i])
+  }
+  return(fitness)
+}
+
+
+########################################### Mutation #####################################
+mutate = function(route) {
+  route = as.character(route)
+  mutated = route
+  stopID <- strsplit(x = route, split = ":")[[1]]
+  if (length(stopID) > 3) {
+    swapElemInd = sample(c(2:(length(stopID)-1)),2,replace = FALSE)
+    temp = stopID[swapElemInd[1]]
+    stopID[swapElemInd[1]] = stopID[swapElemInd[2]]
+    stopID[swapElemInd[2]] = temp
+    mutated = combine(stopID)
+  }
+  return(mutated)
+}
+
+
+####################################### Genetic Algorithm function #############################
+GA = function(iterations,crossProb, mutateProb) {
+  fitness = c()
+  iterate1 = c()
+  for (iterate in 1:iterations) {
+    crossRandom = runif(1,0,1)
+    if (crossRandom < crossProb) {
+      parent = sample(x = c(2:length(InitialPopulation)),size = 2,
+                      replace = F)
+      offspring = crossover(InitialPopulation[parent[1]],
+                         InitialPopulation[parent[2]])
+      mutateRandom = runif(n = 1,min = 0,max = 1)
+      if (mutateRandom < mutateProb) {
+        offspring[1] = mutate(offspring[1])
+        offspring[2] = mutate(offspring[2])
+      }
+      if ((getRouteTime(offspring[1]) <= RouteTimeLimit | 
+           length(strsplit(as.character(offspring[1]),split = ":")[[1]]) <= StopIDUpperLimit) &&
+          (getRouteTime(offspring[2]) <= RouteTimeLimit | 
+           length(strsplit(as.character(offspring[2]),split = ":")[[1]]) <= StopIDUpperLimit)) {
+        newPopulation = c(InitialPopulation[-parent],offspring)
+        oldtotaltime = totaltime(InitialPopulation)
+        newtotaltime = totaltime(newPopulation)
+        
+        if (newtotaltime < oldtotaltime) {
+          
+          cat("Iteration : ",iterate,
+              "  | New Population fitness - ",newtotaltime,"\n")
+          fitness[length(fitness)+1] = c(newtotaltime)  #adding the improved fitness values to a vector
+          iterate1[length(iterate1)+1] = c(iterate)
+          #print(fitness)
+          InitialPopulation = newPopulation
+          
+        }
+        
+      }
+      
+    }
+    
+  }
+  #print(iterate1)
+  #print(fitness)
+  plot(iterate1,fitness,xlab="Number of Iterations",ylab="Total time",xlim=c(0,10000),ylim=c(8000,9200),type='o',col="blue",main="Fitness over time")
+  return(InitialPopulation)
+}
+
+totaltime(InitialPopulation)
+StopIdsUnique(InitialPopulation)
+InitialPopulation = GA(10000,0.75,0.2)
+totaltime(InitialPopulation)
+StopIdsUnique(InitialPopulation)
+InitialPopulation
+9245-7907
+
+9310-8229
