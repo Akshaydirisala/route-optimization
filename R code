@@ -8,7 +8,6 @@ summary(JobExecutionTime)
 TravelTime = read.csv(file = "TravelTime.csv",header = T)
 str(TravelTime)
 summary(TravelTime)
-
 # Solution Space - All possible solutions to the problem via permutations 
 library(gtools)
 Permutations <- data.frame(
@@ -28,8 +27,6 @@ allStops <- as.character(JobExecutionTime$StopId)
 class(allStops)
 RouteTimeLimit = 720
 StopIDUpperLimit = 9
-
-
 #Function for getting total time (Travel Time + Execution Time)
 getRouteTime <- function(Route){
   # formatize data
@@ -128,9 +125,6 @@ StopIdsUnique <- function(pop){
 # }else {
 #   cat("Please check the fitness Function")
 # }
-
-
-
 
 ####################################Single point over Function ##############################
 
